@@ -1,0 +1,18 @@
+# Python cache
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Env files — all services
+**/.env
+.env
+
+# Secrets / local docs
+prompts.md
+prompts.pdf
+test_pickle.py
