@@ -1,0 +1,18 @@
+rules:
+  - id: hardcoded-password
+    pattern: $VAR = "$STR"
+    message: Possible hardcoded secret in variable '$VAR'
+    languages: [python]
+    severity: WARNING
+
+  - id: pickle-deserialization
+    pattern: pickle.loads(...)
+    message: Unsafe pickle deserialization — never unpickle untrusted data
+    languages: [python]
+    severity: ERROR
+
+  - id: subprocess-user-input
+    pattern: subprocess.call(input())
+    message: Subprocess called with direct user input — shell injection risk
+    languages: [python]
+    severity: ERROR

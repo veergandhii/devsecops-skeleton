@@ -31,3 +31,13 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+  sast-scanner:
+    build: ./sast-scanner
+    env_file: ./sast-scanner/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8002:8002"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
