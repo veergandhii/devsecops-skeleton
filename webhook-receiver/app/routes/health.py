@@ -3,4 +3,4 @@ router=APIRouter()
 
 @router.get("/health")
 def health_check():
-    return "Service is running"
+        return {"status": "healthy", "service": "webhook-receiver"}

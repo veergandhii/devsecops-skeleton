@@ -3,7 +3,7 @@ import asyncio
 import aio_pika
 
 from app.config import RABBITMQ_URL, CONSUME_QUEUE
-from app.scanner import run_semgrep, run_bandit
+from app.scanner import scan
 from app.publisher import publish_findings
 
 
@@ -36,10 +36,10 @@ async def start_consumer():
 
             print(f"🔍 Scanning job {job_id} ({language})")
 
-            semgrep_findings = run_semgrep(code, language)
-            bandit_findings  = run_bandit(code) if language.lower() == "python" else []
-
-            all_findings = semgrep_findings + bandit_findings
+            # scan() runs Semgrep (bundled rules) + Bandit (Python only),
+            # resolves the rules path, and returns a unified result dict.
+            result = scan(code, language, job_id)
+            all_findings = result["findings"]
             print(f"✅ job {job_id}: {len(all_findings)} finding(s)")
 
             await publish_findings(publish_channel, job_id, all_findings)
