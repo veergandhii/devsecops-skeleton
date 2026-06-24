@@ -2,7 +2,7 @@ import json
 import asyncio
 import aio_pika
 
-from app.config import RABBITMQ_URL, CONSUME_QUEUE
+from app.config import RABBITMQ_URL, JOBS_EXCHANGE, CONSUME_QUEUE
 from app.scanner import scan
 from app.publisher import publish_findings
 
@@ -23,7 +23,10 @@ async def start_consumer():
     publish_channel = await connection.channel()
 
     from app.config import PUBLISH_QUEUE
+    exchange = await consume_channel.declare_exchange(
+        JOBS_EXCHANGE, aio_pika.ExchangeType.FANOUT, durable=True)
     queue = await consume_channel.declare_queue(CONSUME_QUEUE, durable=True)
+    await queue.bind(exchange)
     await publish_channel.declare_queue(PUBLISH_QUEUE, durable=True)
 
     # ── 3. Message handler ───────────────────────────────────────────────────

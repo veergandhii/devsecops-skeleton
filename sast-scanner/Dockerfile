@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install git — Semgrep needs it to resolve rules from the registry
+# Semgrep needs git to resolve rules from the registry
 RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -13,7 +13,7 @@ COPY app/ ./app/
 # /app/rules/python-security.yml — so they must be copied into the image.
 COPY rules/ ./rules/
 
-# Confirm both SAST tools are actually on PATH at build time — fast fail if not
+# Fail the build if either SAST tool isn't on PATH — catches a bad install at build time.
 RUN semgrep --version && bandit --version
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002"]

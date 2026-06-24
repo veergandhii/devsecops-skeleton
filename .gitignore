@@ -16,3 +16,6 @@ venv/
 prompts.md
 prompts.pdf
 test_pickle.py
+
+#resources
+guides/*

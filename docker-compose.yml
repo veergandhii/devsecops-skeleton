@@ -41,3 +41,13 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+  secrets-scanner:
+    build: ./secrets-scanner
+    env_file: ./secrets-scanner/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8003:8003"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy

@@ -1,15 +1,15 @@
-import json 
-import aio_pika
-import os
+import aio_pika, json, os
 
 async def publish_message(payload):
-    rabbitmq_url = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq/")  # amqp is advance msging queue protocol
-    
-    async with await aio_pika.connect_robust(rabbitmq_url) as connection:  # auto-closes cleanly
-        async with connection.channel() as channel:                         # auto-closes channel too
-            queue = os.getenv("QUEUE_NAME", "scan_jobs")
-            await channel.declare_queue(queue, durable=True)
-            message_body = json.dumps(payload).encode()
-            message = aio_pika.Message(body=message_body)
-            await channel.default_exchange.publish(message, routing_key=queue)
-    # connection and channel both cleanly closed here 
+    rabbitmq_url = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq/")
+    async with await aio_pika.connect_robust(rabbitmq_url) as connection:
+        async with connection.channel() as channel:
+            exchange_name = os.getenv("JOBS_EXCHANGE", "scan_jobs_fanout")
+            # FANOUT: declare the exchange, then publish ONE copy. RabbitMQ duplicates it
+            # into every queue bound to this exchange (each scanner binds its own queue).
+            exchange = await channel.declare_exchange(
+                exchange_name, aio_pika.ExchangeType.FANOUT, durable=True)
+            message = aio_pika.Message(
+                body=json.dumps(payload).encode(),
+                delivery_mode=aio_pika.DeliveryMode.PERSISTENT)  # survive broker restart
+            await exchange.publish(message, routing_key="")      # fanout ignores routing_key
