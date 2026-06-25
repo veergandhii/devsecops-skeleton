@@ -51,3 +51,37 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+  infra-scanner:
+    build: ./infra-scanner
+    env_file: ./infra-scanner/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8004:8004"
+    volumes:
+      # Project root mounted READ-ONLY so Checkov can read compose + Dockerfiles.
+      # ":ro" = read-only: the scanner can never modify your source. (Defence in depth.)
+      - .:/workspace:ro
+      # Docker socket so Trivy can inspect images in the host daemon. DEV-ONLY shortcut:
+      # this grants root-equivalent host access. Removed in the Phase 10 CI version.
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    # NOTE: infra-scanner consumes its OWN queue `scan_jobs.infra` and is NOT bound to the
+    # scan_jobs_fanout exchange, so a code push never triggers it. It only runs when the
+    # scheduler (below) publishes to that queue. CONSUME_QUEUE=scan_jobs.infra lives in its .env.
+
+  # scheduler: publishes scheduled infra scan triggers.
+  # The scheduled flow's trigger: a tiny service that publishes one message to scan_jobs.infra on
+  # a cron cadence (see "The scheduled trigger" above for app/scheduler.py). It serves no HTTP, so
+  # no ports; it only talks to RabbitMQ, so no volumes.
+  scheduler:
+    build: ./scheduler
+    env_file: ./scheduler/.env          # RABBITMQ_URL, INFRA_QUEUE=scan_jobs.infra, INFRA_CRON="0 2 * * *"
+    environment:
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
