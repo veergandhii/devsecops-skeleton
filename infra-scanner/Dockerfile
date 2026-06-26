@@ -24,6 +24,9 @@ RUN curl -fsSL https://get.trivy.dev/deb/public.key \
 # lets us install into it anyway (fine inside a single-purpose container).
 RUN pip install --no-cache-dir checkov --break-system-packages
 
+# Patch pip-tooling CVEs (wheel + setuptools/jaraco.context) baked into the base image.
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel --break-system-packages
+
 # App deps and code.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

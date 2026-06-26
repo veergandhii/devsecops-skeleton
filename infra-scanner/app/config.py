@@ -15,3 +15,4 @@ WORKSPACE_PATH = os.getenv("WORKSPACE_PATH", "/workspace")
 # Docker Compose v2 names built images "<project>-<service>" (project = the directory name,
 # lowercased). Override here if your project name differs. Verify with `docker images`.
 COMPOSE_PROJECT_NAME = os.getenv("COMPOSE_PROJECT_NAME", "devsecops-skeleton")
+RESULTS_EXCHANGE = os.getenv("RESULTS_EXCHANGE", "scan_results_fanout")

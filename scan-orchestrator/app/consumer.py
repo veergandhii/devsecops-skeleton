@@ -17,7 +17,10 @@ async def start_consumer():
 
     channel = await connection.channel()
     await channel.set_qos(prefetch_count=1)
-    queue = await channel.declare_queue(queue_name, durable=True)
+    exchange = await channel.declare_exchange(
+    "scan_results_fanout", aio_pika.ExchangeType.FANOUT, durable=True)
+    queue = await channel.declare_queue("scan_results.orchestrator", durable=True)
+    await queue.bind(exchange)
 
     async def on_message(message: aio_pika.IncomingMessage):
         async with message.process():

@@ -84,4 +84,13 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
-
+  ai-service:
+    build: ./ai-service
+    env_file: ./ai-service/.env        # ← GEMINI_API_KEY + GEMINI_MODEL live here (git-ignored)
+    environment:
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8005:8005"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy

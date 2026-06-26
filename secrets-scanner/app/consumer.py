@@ -2,7 +2,7 @@ import json
 import asyncio
 import aio_pika
 
-from app.config import RABBITMQ_URL, JOBS_EXCHANGE, CONSUME_QUEUE, PUBLISH_QUEUE
+from app.config import RABBITMQ_URL, JOBS_EXCHANGE, CONSUME_QUEUE, RESULTS_EXCHANGE
 from app.scanner import scan
 from app.publisher import publish_findings
 
@@ -37,7 +37,10 @@ async def start_consumer():
     queue = await consume_channel.declare_queue(CONSUME_QUEUE, durable=True)
     await queue.bind(exchange)  # this service's queue
     # subscribe my queue to the exchange
-    await publish_channel.declare_queue(PUBLISH_QUEUE, durable=True)
+    # Results side is also fan-out: declare the exchange we publish to (not a plain
+    # `scan_results` queue — that was the pre-fanout leftover that orphaned on every restart).
+    await publish_channel.declare_exchange(
+        RESULTS_EXCHANGE, aio_pika.ExchangeType.FANOUT, durable=True)
 
     # ── 3. Message handler ───────────────────────────────────────────────────
     async def on_message(message: aio_pika.IncomingMessage):

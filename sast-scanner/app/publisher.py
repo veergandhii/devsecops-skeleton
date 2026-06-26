@@ -1,9 +1,6 @@
-import json
-import aio_pika
+import json, aio_pika
 from datetime import datetime, timezone
-
-from app.config import PUBLISH_QUEUE, SERVICE_NAME
-
+from app.config import RESULTS_EXCHANGE, SERVICE_NAME   # add RESULTS_EXCHANGE to each config.py
 
 async def publish_findings(channel: aio_pika.Channel, job_id: str, findings: list[dict]):
     payload = {
@@ -13,13 +10,14 @@ async def publish_findings(channel: aio_pika.Channel, job_id: str, findings: lis
         "count":     len(findings),
         "findings":  findings,
     }
-
-    await channel.default_exchange.publish(
+    # FANOUT: declare + publish ONE copy; RabbitMQ duplicates to every bound queue.
+    exchange = await channel.declare_exchange(
+        RESULTS_EXCHANGE, aio_pika.ExchangeType.FANOUT, durable=True)
+    await exchange.publish(
         aio_pika.Message(
             body=json.dumps(payload).encode(),
             delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
             content_type="application/json",
         ),
-        routing_key=PUBLISH_QUEUE,
+        routing_key="",   # fanout ignores it
     )
-    print(f"📤 Published {len(findings)} findings for job {job_id}")

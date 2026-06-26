@@ -1,0 +1,4 @@
+fastapi
+uvicorn[standard]
+aio_pika
+google-genai>=1.0.0

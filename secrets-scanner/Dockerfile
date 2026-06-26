@@ -19,6 +19,9 @@ RUN curl -sSL https://github.com/trufflesecurity/trufflehog/releases/download/v3
       | tar -xz -C /usr/local/bin trufflehog \
     && chmod +x /usr/local/bin/trufflehog
 
+# Patch pip-tooling CVEs (wheel + setuptools/jaraco.context) baked into the base image.
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
