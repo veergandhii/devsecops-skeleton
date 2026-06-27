@@ -15,29 +15,55 @@ services:
     env_file: ./webhook-receiver/.env
     environment:
       - PYTHONUNBUFFERED=1
-    ports:
-      - "8000:8000"
+    # ⛔ REMOVE the old "ports: - 8000:8000" — no longer exposed to the host
     depends_on:
       rabbitmq:
         condition: service_healthy
+    labels:
+      - traefik.enable=true
+      # ── middleware DEFINITIONS (declare once; referenced by name below) ──
+      - traefik.http.middlewares.jwtauth.forwardauth.address=http://gateway-auth:8010/verify
+      - traefik.http.middlewares.ratelimit.ratelimit.average=10   # 10 req/s sustained...
+      - traefik.http.middlewares.ratelimit.ratelimit.burst=20     # ...allowing short bursts
+      # ── protected router: /webhook needs JWT + rate limit ──
+      - traefik.http.routers.webhook.rule=PathPrefix(`/webhook`)
+      - traefik.http.routers.webhook.entrypoints=web
+      - traefik.http.routers.webhook.middlewares=jwtauth,ratelimit
+      - traefik.http.routers.webhook.service=webhook-svc
+      # ── OPEN router: /health reachable WITHOUT a token (monitoring) ──
+      # Higher priority so it wins over the broader rule for the /health path.
+      - traefik.http.routers.webhook-health.rule=Path(`/health`)
+      - traefik.http.routers.webhook-health.entrypoints=web
+      - traefik.http.routers.webhook-health.middlewares=ratelimit
+      - traefik.http.routers.webhook-health.service=webhook-svc
+      - traefik.http.routers.webhook-health.priority=100
+      # ── backend: which container port to forward to ──
+      - traefik.http.services.webhook-svc.loadbalancer.server.port=8000
 
   scan-orchestrator:
     build: ./scan-orchestrator
     env_file: ./scan-orchestrator/.env
     environment:
       - PYTHONUNBUFFERED=1
-    ports:
-      - "8001:8001"
     depends_on:
       rabbitmq:
         condition: service_healthy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.orchestrator.rule=PathPrefix(`/orchestrator`)
+      - traefik.http.routers.orchestrator.entrypoints=web
+      # stripprefix: Traefik chops "/orchestrator" before forwarding, so the app receives
+      # "/health" (its real route) instead of "/orchestrator/health" → no 404. The service
+      # stays unaware it sits behind a prefixed gateway.
+      - traefik.http.middlewares.strip-orchestrator.stripprefix.prefixes=/orchestrator
+      - traefik.http.routers.orchestrator.middlewares=jwtauth,ratelimit,strip-orchestrator
+      - traefik.http.routers.orchestrator.service=orchestrator-svc
+      - traefik.http.services.orchestrator-svc.loadbalancer.server.port=8001
   sast-scanner:
     build: ./sast-scanner
     env_file: ./sast-scanner/.env
     environment:
       - PYTHONUNBUFFERED=1
-    ports:
-      - "8002:8002"
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -46,8 +72,6 @@ services:
     env_file: ./secrets-scanner/.env
     environment:
       - PYTHONUNBUFFERED=1
-    ports:
-      - "8003:8003"
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -56,8 +80,6 @@ services:
     env_file: ./infra-scanner/.env
     environment:
       - PYTHONUNBUFFERED=1
-    ports:
-      - "8004:8004"
     volumes:
       # Project root mounted READ-ONLY so Checkov can read compose + Dockerfiles.
       # ":ro" = read-only: the scanner can never modify your source. (Defence in depth.)
@@ -89,18 +111,56 @@ services:
     env_file: ./ai-service/.env        # ← GEMINI_API_KEY + GEMINI_MODEL live here (git-ignored)
     environment:
       - PYTHONUNBUFFERED=1
-    ports:
-      - "8005:8005"
     depends_on:
       rabbitmq:
         condition: service_healthy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.ai.rule=PathPrefix(`/ai`)
+      - traefik.http.routers.ai.entrypoints=web
+      # stripprefix: "/ai/health" → "/health" before it reaches the app (see orchestrator note).
+      - traefik.http.middlewares.strip-ai.stripprefix.prefixes=/ai
+      - traefik.http.routers.ai.middlewares=jwtauth,ratelimit,strip-ai
+      - traefik.http.routers.ai.service=ai-svc
+      - traefik.http.services.ai-svc.loadbalancer.server.port=8005
   github-service:
     build: ./github-service
     env_file: ./github-service/.env
     environment:
       - PYTHONUNBUFFERED=1
-    ports:
-      - "8006:8006"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.github.rule=PathPrefix(`/github`)
+      - traefik.http.routers.github.entrypoints=web
+      # stripprefix: "/github/health" → "/health" before it reaches the app (see orchestrator note).
+      - traefik.http.middlewares.strip-github.stripprefix.prefixes=/github
+      - traefik.http.routers.github.middlewares=jwtauth,ratelimit,strip-github
+      - traefik.http.routers.github.service=github-svc
+      - traefik.http.services.github-svc.loadbalancer.server.port=8006
     depends_on:
       rabbitmq:
         condition: service_healthy
+  traefik:
+    image: traefik:v3.7.5
+    command:
+      # ── static config via CLI flags ──
+      - --providers.docker=true                       # read labels off containers
+      - --providers.docker.exposedbydefault=false     # only expose containers we opt-in (label)
+      - --entrypoints.web.address=:80                 # the one public entrypoint
+      - --api.dashboard=true                          # Traefik's own dashboard...
+      - --api.insecure=true                           # ...served on :8080 (DEV ONLY — no auth)
+      - --log.level=INFO
+    ports:
+      - "80:80"        # the ONLY app port exposed to the host now
+      - "8080:8080"    # Traefik dashboard (dev convenience)
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # read-only: Traefik only reads metadata
+    depends_on:
+      - gateway-auth
+
+  gateway-auth:
+    build: ./gateway-auth
+    env_file: ./gateway-auth/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    # no host ports — only Traefik (and ForwardAuth) reach it, by service name, on the network
