@@ -94,3 +94,13 @@ services:
     depends_on:
       rabbitmq:
         condition: service_healthy
+  github-service:
+    build: ./github-service
+    env_file: ./github-service/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8006:8006"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy

@@ -2,12 +2,13 @@ import json, aio_pika
 from datetime import datetime, timezone
 from app.config import RESULTS_EXCHANGE, SERVICE_NAME   # add RESULTS_EXCHANGE to each config.py
 
-async def publish_findings(channel: aio_pika.Channel, job_id: str, findings: list[dict]):
+async def publish_findings(channel: aio_pika.Channel, job_id: str, findings: list[dict], meta: dict):
     payload = {
         "job_id":    job_id,
         "service":   SERVICE_NAME,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "count":     len(findings),
+        "meta":        meta,
         "findings":  findings,
     }
     # FANOUT: declare + publish ONE copy; RabbitMQ duplicates to every bound queue.

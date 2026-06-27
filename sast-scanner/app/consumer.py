@@ -35,6 +35,7 @@ async def start_consumer():
     async def on_message(message: aio_pika.IncomingMessage):
         async with message.process():
             payload = json.loads(message.body.decode())
+            meta = payload.get("meta", {})
             job_id   = payload.get("job_id", "unknown")
             code     = payload.get("code", "")
             language = payload.get("language", "python")
@@ -47,7 +48,7 @@ async def start_consumer():
             all_findings = result["findings"]
             print(f"✅ job {job_id}: {len(all_findings)} finding(s)")
 
-            await publish_findings(publish_channel, job_id, all_findings)
+            await publish_findings(publish_channel, job_id, all_findings, meta)
 
     await queue.consume(on_message)
     print(f"👂 sast-scanner listening on [{CONSUME_QUEUE}]")

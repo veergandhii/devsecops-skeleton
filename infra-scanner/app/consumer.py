@@ -43,6 +43,7 @@ async def start_consumer():
         # an exception propagates, so a crash mid-scan returns the job to the queue.
         async with message.process():
             payload  = json.loads(message.body.decode())
+            meta = payload.get("meta", {})
             job_id   = payload.get("job_id", "unknown")
             code     = payload.get("code", "")
             language = payload.get("language", "python")
@@ -52,7 +53,7 @@ async def start_consumer():
             all_findings = result["findings"]
             print(f"job {job_id}: {len(all_findings)} finding(s)")
 
-            await publish_findings(publish_channel, job_id, all_findings)
+            await publish_findings(publish_channel, job_id, all_findings, meta)
 
     # 4. Start consuming, then block forever.
     await queue.consume(on_message)        # registers the callback, returns immediately
