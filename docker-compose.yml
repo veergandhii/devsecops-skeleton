@@ -94,6 +94,17 @@ services:
     # scan_jobs_fanout exchange, so a code push never triggers it. It only runs when the
     # scheduler (below) publishes to that queue. CONSUME_QUEUE=scan_jobs.infra lives in its .env.
 
+  dast-scanner:
+    build: ./dast-scanner
+    env_file: ./dast-scanner/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8007:8007"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
   # scheduler: publishes scheduled infra scan triggers.
   # The scheduled flow's trigger: a tiny service that publishes one message to scan_jobs.infra on
   # a cron cadence (see "The scheduled trigger" above for app/scheduler.py). It serves no HTTP, so

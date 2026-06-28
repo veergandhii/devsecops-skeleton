@@ -1,0 +1,4 @@
+fastapi
+uvicorn[standard]
+aio_pika
+httpx
