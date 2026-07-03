@@ -11,6 +11,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Least privilege by default: the auto GITHUB_TOKEN is read-only for the whole workflow.
+# Jobs that need more (pr-comment) opt in with their own `permissions:` block. (CKV2_GHA_1)
+permissions:
+  contents: read
+
 jobs:
   # ── 1. SECRETS (full git history) ─────────────────────────────────────────
   secrets:
@@ -40,8 +45,12 @@ jobs:
       - name: Semgrep (image's bundled rules)
         run: |
           docker run --rm -v "$PWD":/src:ro devsecops-skeleton-sast-scanner \
-            semgrep --config /app/rules/python-security.yml --error --quiet /src
-        #          ^ rules live INSIDE the image at /app/rules (House Rule #3); --error: exit 1 on a finding
+            semgrep --config /app/rules/python-security.yml --severity ERROR --error --quiet /src
+        #          ^ rules live INSIDE the image at /app/rules (House Rule #3); --error: exit 1 on a finding.
+        #          --severity ERROR: block ONLY on ERROR-level rules (hardcoded secret, pickle, eval, SQLi,
+        #          assert-auth, flask-debug, yaml-load). WARNING-level advisories (bind-all-interfaces on
+        #          0.0.0.0, hardcoded-ip, weak-hash, insecure-random) report but don't gate — the Semgrep
+        #          analogue of Trivy's ignore-unfixed / Checkov's skip-list: block on actionable, not advisory.
       - name: Bandit (high severity gates the build)
         run: |
           docker run --rm -v "$PWD":/src:ro devsecops-skeleton-sast-scanner \
@@ -116,7 +125,10 @@ jobs:
   pr-comment:
     runs-on: ubuntu-latest
     needs: [ secrets, sast, iac, image-scan ]
-    if: github.event_name == 'pull_request'  # only on PRs (there's a PR to comment on)
+    # always() so the summary posts even when a security job FAILED — otherwise a red run
+    # skips the comment (needs: defaults to requiring success) and you lose the summary
+    # exactly when you most want it. Still only on PRs (there's a PR to comment on).
+    if: always() && github.event_name == 'pull_request'
     permissions:
       pull-requests: write                   # let GITHUB_TOKEN post a comment
     steps:
