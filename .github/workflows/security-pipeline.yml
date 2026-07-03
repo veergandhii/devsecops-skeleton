@@ -102,20 +102,33 @@ jobs:
     needs: [ secrets, sast, iac, image-scan ]   # the gate: all must pass
     steps:
       - uses: actions/checkout@v4
-      - name: Bring the stack up
+      - name: Materialise CI env files
+        # The per-service .env files are git-ignored (House Rule #7), so they don't exist on the
+        # runner and `docker compose up` errors "env file ... not found". Create minimal ones:
+        # config.py defaults already cover RABBITMQ_URL; secrets come from Actions secrets. An empty
+        # JWT is fine here — DAST only hits the OPEN /health route, which skips ForwardAuth.
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
+          for d in webhook-receiver scan-orchestrator sast-scanner secrets-scanner \
+                   infra-scanner dast-scanner scheduler ai-service github-service gateway-auth; do
+            echo "RABBITMQ_URL=amqp://guest:guest@rabbitmq/" > "$d/.env"
+          done
+          echo "JWT_SECRET=${JWT_SECRET}"         >> gateway-auth/.env
+          echo "GEMINI_API_KEY=${GEMINI_API_KEY}" >> ai-service/.env
+      - name: Bring the stack up
+        run: |
           docker compose up -d
-          # wait for the webhook to answer health before scanning
+          # Since Phase 8, Traefik (:80) is the ONLY exposed door — webhook's 8000 is no longer
+          # published. /health is Traefik's open router (no JWT). Wait for it before scanning.
           for i in $(seq 1 30); do
-            curl -sf http://localhost:8000/health && break || sleep 5
+            curl -sf http://localhost/health && break || sleep 5
           done
       - name: ZAP baseline
         uses: zaproxy/action-baseline@v0.12.0
         with:
-          target: http://localhost:8000      # scan a service exposed on the runner
+          target: http://localhost/health    # via Traefik :80 — open route, no token needed
           fail_action: false                 # report, don't hard-fail the build on warnings
       - name: Tear down
         if: always()                         # run even if a previous step failed
