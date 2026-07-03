@@ -109,14 +109,15 @@ jobs:
         # JWT is fine here — DAST only hits the OPEN /health route, which skips ForwardAuth.
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           for d in webhook-receiver scan-orchestrator sast-scanner secrets-scanner \
                    infra-scanner dast-scanner scheduler ai-service github-service gateway-auth; do
             echo "RABBITMQ_URL=amqp://guest:guest@rabbitmq/" > "$d/.env"
           done
-          echo "JWT_SECRET=${JWT_SECRET}"         >> gateway-auth/.env
-          echo "GEMINI_API_KEY=${GEMINI_API_KEY}" >> ai-service/.env
+          echo "JWT_SECRET=${JWT_SECRET}" >> gateway-auth/.env
+          # NOTE: deliberately NO GEMINI_API_KEY here. deploy-dast never publishes a scan job, so
+          # ai-service never enriches → Gemini is never called in CI. Leaving the key out makes that
+          # a guarantee (ai-service falls back to its safe stub) and keeps the secret out of CI.
       - name: Bring the stack up
         run: |
           docker compose up -d
