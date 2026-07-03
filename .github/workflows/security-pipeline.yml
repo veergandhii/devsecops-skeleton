@@ -127,11 +127,10 @@ jobs:
             curl -sf http://localhost/health && break || sleep 5
           done
       - name: ZAP baseline
-        # continue-on-error: the action's own report-artifact upload hits a known, currently-open
-        # GitHub-side flake (actions/upload-artifact#490 — server 400s "artifact name is not valid"
-        # even though the action's own check passed) that's unrelated to the scan result. DAST is
-        # already advisory (fail_action: false) and not a required merge check, so don't let a
-        # GitHub-backend hiccup on the *report upload* fail the job when the scan itself succeeded.
+        # continue-on-error: belt-and-suspenders against actions/upload-artifact's still-open
+        # intermittent 400 (actions/upload-artifact#490). DAST is already advisory
+        # (fail_action: false) and not a required merge check, so a report-upload hiccup must
+        # never fail the job when the scan itself succeeded.
         continue-on-error: true
         uses: zaproxy/action-baseline@v0.12.0
         with:
@@ -140,6 +139,12 @@ jobs:
           allow_issue_writing: false          # don't open a GitHub Issue for warnings — the
           #                                     workflow token is least-privilege (contents: read,
           #                                     no issues: write), and pr-comment already summarises.
+          # action-baseline already uses upload-artifact@v4 internally, which forbids uploading to
+          # the SAME artifact name twice in one workflow run. "Re-run failed jobs" re-executes this
+          # step under the SAME run_id, colliding with the earlier attempt's "zap_scan" container —
+          # that's what actually produced the 400 "artifact name is not valid". Make the name unique
+          # per attempt so a re-run can never collide with itself.
+          artifact_name: zap_scan-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Tear down
         if: always()                         # run even if a previous step failed
         run: docker compose down -v
