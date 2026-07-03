@@ -130,6 +130,9 @@ jobs:
         with:
           target: http://localhost/health    # via Traefik :80 — open route, no token needed
           fail_action: false                 # report, don't hard-fail the build on warnings
+          allow_issue_writing: false          # don't open a GitHub Issue for warnings — the
+          #                                     workflow token is least-privilege (contents: read,
+          #                                     no issues: write), and pr-comment already summarises.
       - name: Tear down
         if: always()                         # run even if a previous step failed
         run: docker compose down -v
