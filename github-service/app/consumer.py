@@ -1,9 +1,11 @@
 import json
+import logging
 import asyncio
 import aio_pika
 
 from app.config import RABBITMQ_URL, CONSUME_QUEUE
 from app.github_client import post_comment
+from app.logging_config import correlation_id_var
 
 
 async def start_consumer():
@@ -21,12 +23,15 @@ async def start_consumer():
 
     async def on_message(message: aio_pika.IncomingMessage):
         async with message.process():
+            cid = (message.headers or {}).get("correlation_id", "-")
+            correlation_id_var.set(cid)     # tags every log line in this task with the trace
+
             envelope = json.loads(message.body.decode())
             job_id   = envelope.get("job_id", "unknown")
-            print(f"💬 posting PR comment for job {job_id}")
+            logging.info(f"💬 posting PR comment for job {job_id}")
             ok = post_comment(envelope)     # blocking PyGithub call; fine at prefetch=1
-            print(f"{'✅' if ok else '⚠️ '} job {job_id}: comment {'posted' if ok else 'skipped'}")
+            logging.info(f"{'✅' if ok else '⚠️ '} job {job_id}: comment {'posted' if ok else 'skipped'}")
 
     await queue.consume(on_message)
-    print(f"👂 github-service listening on [{CONSUME_QUEUE}]")
+    logging.info(f"👂 github-service listening on [{CONSUME_QUEUE}]")
     await asyncio.Future()

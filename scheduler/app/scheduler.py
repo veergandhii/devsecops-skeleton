@@ -5,12 +5,16 @@
 # that the webhook structurally cannot do: a push can't fire on a clock.
 import asyncio
 import json
+import logging
 import os
+import uuid
 from datetime import datetime, timezone
 
 import aio_pika
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+
+from app.logging_config import correlation_id_var, setup_logging
 
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq/")
 INFRA_QUEUE = os.getenv("INFRA_QUEUE", "scan_jobs.infra")   # infra-scanner's own queue
@@ -21,6 +25,11 @@ async def publish_infra_trigger() -> None:
     """Publish one trigger straight to scan_jobs.infra, not to scan_jobs_fanout.
 
     Bypassing the exchange is the entire point: no push, no fan-out, just the clock."""
+    # The scheduler is a second origin point (like webhook-receiver): nothing upstream hands
+    # it a correlation_id, so it mints its own for this run's trace.
+    correlation_id = str(uuid.uuid4())
+    correlation_id_var.set(correlation_id)
+
     connection = await aio_pika.connect_robust(RABBITMQ_URL)
     async with connection:
         channel = await connection.channel()
@@ -37,19 +46,21 @@ async def publish_infra_trigger() -> None:
             aio_pika.Message(
                 body=json.dumps(payload).encode(),
                 delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+                headers={"correlation_id": correlation_id},
             ),
             routing_key=INFRA_QUEUE,
         )
-        print(f"published scheduled infra trigger {payload['job_id']} -> {INFRA_QUEUE}")
+        logging.info(f"published scheduled infra trigger {payload['job_id']} -> {INFRA_QUEUE}")
 
 
 async def main() -> None:
+    setup_logging("scheduler")
     scheduler = AsyncIOScheduler()
     # from_crontab parses a standard 5-field cron string. Swap INFRA_CRON in .env to retune the
     # cadence (e.g. "0 */6 * * *" = every 6 hours) with no code change.
     scheduler.add_job(publish_infra_trigger, CronTrigger.from_crontab(INFRA_CRON))
     scheduler.start()
-    print(f"infra scheduler up - cadence '{INFRA_CRON}' -> {INFRA_QUEUE}")
+    logging.info(f"infra scheduler up - cadence '{INFRA_CRON}' -> {INFRA_QUEUE}")
     await asyncio.Future()   # park forever; APScheduler fires publish_infra_trigger in the bg
 
 

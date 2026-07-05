@@ -6,7 +6,8 @@ from fastapi import FastAPI
 from app.routes.health import router as health_router
 from app.consumer import start_consumer
 from app.config import PORT
-
+from app.logging_config import setup_logging
+setup_logging("github-service")
 
 # Lifespan replaces the deprecated @app.on_event("startup"). Code before `yield`
 # runs at startup, code after runs at shutdown. We launch the RabbitMQ consumer as

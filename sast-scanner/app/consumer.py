@@ -1,10 +1,12 @@
 import json
+import logging
 import asyncio
 import aio_pika
 
 from app.config import RABBITMQ_URL, JOBS_EXCHANGE, CONSUME_QUEUE, RESULTS_EXCHANGE
 from app.scanner import scan
 from app.publisher import publish_findings
+from app.logging_config import correlation_id_var
 
 
 async def start_consumer():
@@ -34,23 +36,26 @@ async def start_consumer():
     # ── 3. Message handler ───────────────────────────────────────────────────
     async def on_message(message: aio_pika.IncomingMessage):
         async with message.process():
+            cid = (message.headers or {}).get("correlation_id", "-")
+            correlation_id_var.set(cid)     # tags every log line in this task with the trace
+
             payload = json.loads(message.body.decode())
             meta = payload.get("meta", {})
             job_id   = payload.get("job_id", "unknown")
             code     = payload.get("code", "")
             language = payload.get("language", "python")
 
-            print(f"🔍 Scanning job {job_id} ({language})")
+            logging.info(f"🔍 Scanning job {job_id} ({language})")
 
             # scan() runs Semgrep (bundled rules) + Bandit (Python only),
             # resolves the rules path, and returns a unified result dict.
             result = scan(code, language, job_id)
             all_findings = result["findings"]
-            print(f"✅ job {job_id}: {len(all_findings)} finding(s)")
+            logging.info(f"✅ job {job_id}: {len(all_findings)} finding(s)")
 
             await publish_findings(publish_channel, job_id, all_findings, meta)
 
     await queue.consume(on_message)
-    print(f"👂 sast-scanner listening on [{CONSUME_QUEUE}]")
+    logging.info(f"👂 sast-scanner listening on [{CONSUME_QUEUE}]")
 
     await asyncio.Future()
