@@ -20,4 +20,9 @@ RUN mkdir -p /zap/wrk && chmod 777 /zap/wrk
 # Fail the build if the ZAP baseline script isn't where we expect it.
 RUN which zap-baseline.py
 
+# Drop back to ZAP's built-in non-root user for runtime — we only needed root to install deps.
+# /zap/wrk is chmod 777 above so zap can still write reports; uvicorn binds 8007 (>1024, no root
+# needed). Satisfies CKV_DOCKER_8 (last USER must not be root) with a real fix, not a skip.
+USER zap
+
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8007"]

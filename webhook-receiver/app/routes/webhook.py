@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Request
 from app.publisher import publish_message
 
@@ -19,8 +20,8 @@ async def handle_webhook(request: Request):
                 "commit_sha": (pr.get("head") or {}).get("sha", ""),
             },
         }
-        await publish_message(job)
-        print("Received webhook payload:", payload)
+        await publish_message(job)  # mints + sets correlation_id_var for this request's context
+        logging.info("received webhook payload", extra={"repo": repo.get("full_name", "")})
     except Exception as e:
-        print(f"Publisher failed: {e}")  # this will show what's actually breaking
+        logging.error(f"publisher failed: {e}")
     return {"status": "received"}

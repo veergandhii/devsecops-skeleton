@@ -1,0 +1,9 @@
+# .checkov.yaml — what we consciously accept, WITH the reason. An auditor (or future-you) reads
+# this and sees a decision, not an oversight. (Phase 10, Concern #5.)
+skip-check:
+  - CKV_DOCKER_2   # no HEALTHCHECK on dev-stage scanners — Compose-level healthchecks already cover liveness
+  - CKV_DOCKER_3   # infra-scanner runs as root: needs docker.sock so Trivy can inspect images; container is network-isolated
+# scope out vendored / virtualenv noise so Checkov only judges IaC we own
+skip-path:
+  - .venv
+  - node_modules

@@ -7,7 +7,8 @@ from app.routes.health import router as health_router
 from app.consumer import start_consumer
 from app.config import PORT
 
-
+from app.logging_config import setup_logging
+setup_logging("sast-scanner")
 # ── Lifespan: start the RabbitMQ consumer alongside the HTTP server ──────────
 # Using asynccontextmanager lifespan (FastAPI 0.93+) instead of deprecated
 # on_event("startup") — runs start_consumer as a background task so it doesn't

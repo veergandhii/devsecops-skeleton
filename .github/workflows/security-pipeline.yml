@@ -1,0 +1,178 @@
+name: CodeSheriff Security Pipeline
+
+# Run on pushes to any branch and on PRs targeting main.
+on:
+  push:
+  pull_request:
+    branches: [ main ]
+
+# Cancel a previous in-progress run on the same ref when a new commit lands — saves minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege by default: the auto GITHUB_TOKEN is read-only for the whole workflow.
+# Jobs that need more (pr-comment) opt in with their own `permissions:` block. (CKV2_GHA_1)
+permissions:
+  contents: read
+
+jobs:
+  # ── 1. SECRETS (full git history) ─────────────────────────────────────────
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # full history → Gitleaks scans EVERY commit, not just HEAD
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # gitleaks-action exits non-zero on any leak → this job (and the run) fails. Good.
+      - name: TruffleHog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified   # fail only on verified live creds (less noise in CI)
+
+  # ── 2. SAST (Semgrep + Bandit) — run the REAL sast-scanner image ───────────
+  #   Dogfooding: same binary + same bundled rules as the live scanner (no pip-install copy).
+  sast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the real sast-scanner image
+        run: docker compose build sast-scanner   # the exact image the live stack runs
+      - name: Semgrep (image's bundled rules)
+        run: |
+          docker run --rm -v "$PWD":/src:ro devsecops-skeleton-sast-scanner \
+            semgrep --config /app/rules/python-security.yml --severity ERROR --error --quiet /src
+        #          ^ rules live INSIDE the image at /app/rules (House Rule #3); --error: exit 1 on a finding.
+        #          --severity ERROR: block ONLY on ERROR-level rules (hardcoded secret, pickle, eval, SQLi,
+        #          assert-auth, flask-debug, yaml-load). WARNING-level advisories (bind-all-interfaces on
+        #          0.0.0.0, hardcoded-ip, weak-hash, insecure-random) report but don't gate — the Semgrep
+        #          analogue of Trivy's ignore-unfixed / Checkov's skip-list: block on actionable, not advisory.
+      - name: Bandit (high severity gates the build)
+        run: |
+          docker run --rm -v "$PWD":/src:ro devsecops-skeleton-sast-scanner \
+            bandit -r /src -lll -x /src/.venv,/src/tests
+        #          ^ -lll = HIGH only; non-zero exit fails the job
+
+  # ── 3. IaC (Checkov) — run the REAL infra-scanner image ───────────────────
+  #   Same Checkov version the live scanner ships; skip-list + scope live in .checkov.yaml (Concern #5).
+  iac:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the real infra-scanner image
+        run: docker compose build infra-scanner
+      - name: Checkov (scoped + justified skips from .checkov.yaml)
+        run: |
+          docker run --rm -v "$PWD":/src:ro devsecops-skeleton-infra-scanner \
+            checkov -d /src --quiet --compact --config-file /src/.checkov.yaml
+        #   -d: scan a directory. soft_fail defaults to FALSE → a real finding fails the job (the gate).
+        #   What we consciously accept (root in infra-scanner, etc.) is justified in .checkov.yaml.
+
+  # ── 4. BUILD images (needs the code to be clean-ish first is optional;
+  #       here we build in parallel, then scan) ────────────────────────────────
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build all images
+        run: docker compose build           # builds every service per docker-compose.yml
+
+  # ── 5. IMAGE CVE scan (Trivy) — fail on CRITICAL ──────────────────────────
+  image-scan:
+    runs-on: ubuntu-latest
+    needs: build                            # only after images exist
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose build sast-scanner   # rebuild one image to scan (runner is fresh)
+      - name: Trivy (CRITICAL blocks merge)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: devsecops-skeleton-sast-scanner   # match your image name (docker images)
+          severity: CRITICAL
+          exit-code: "1"                    # 1 = fail the job if any CRITICAL CVE is found
+          ignore-unfixed: true              # don't block on CVEs with no available fix
+
+  # ── 6. DEPLOY + DAST (only if everything above passed) ────────────────────
+  deploy-dast:
+    runs-on: ubuntu-latest
+    needs: [ secrets, sast, iac, image-scan ]   # the gate: all must pass
+    steps:
+      - uses: actions/checkout@v4
+      - name: Materialise CI env files
+        # The per-service .env files are git-ignored (House Rule #7), so they don't exist on the
+        # runner and `docker compose up` errors "env file ... not found". Create minimal ones:
+        # config.py defaults already cover RABBITMQ_URL; secrets come from Actions secrets. An empty
+        # JWT is fine here — DAST only hits the OPEN /health route, which skips ForwardAuth.
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          for d in webhook-receiver scan-orchestrator sast-scanner secrets-scanner \
+                   infra-scanner dast-scanner scheduler ai-service github-service gateway-auth; do
+            echo "RABBITMQ_URL=amqp://guest:guest@rabbitmq/" > "$d/.env"
+          done
+          echo "JWT_SECRET=${JWT_SECRET}" >> gateway-auth/.env
+          # NOTE: deliberately NO GEMINI_API_KEY here. deploy-dast never publishes a scan job, so
+          # ai-service never enriches → Gemini is never called in CI. Leaving the key out makes that
+          # a guarantee (ai-service falls back to its safe stub) and keeps the secret out of CI.
+      - name: Bring the stack up
+        run: |
+          docker compose up -d
+          # Since Phase 8, Traefik (:80) is the ONLY exposed door — webhook's 8000 is no longer
+          # published. /health is Traefik's open router (no JWT). Wait for it before scanning.
+          for i in $(seq 1 30); do
+            curl -sf http://localhost/health && break || sleep 5
+          done
+      - name: ZAP baseline
+        # continue-on-error: belt-and-suspenders against actions/upload-artifact's still-open
+        # intermittent 400 (actions/upload-artifact#490). DAST is already advisory
+        # (fail_action: false) and not a required merge check, so a report-upload hiccup must
+        # never fail the job when the scan itself succeeded.
+        continue-on-error: true
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: http://localhost/health    # via Traefik :80 — open route, no token needed
+          fail_action: false                 # report, don't hard-fail the build on warnings
+          allow_issue_writing: false          # don't open a GitHub Issue for warnings — the
+          #                                     workflow token is least-privilege (contents: read,
+          #                                     no issues: write), and pr-comment already summarises.
+          # action-baseline already uses upload-artifact@v4 internally, which forbids uploading to
+          # the SAME artifact name twice in one workflow run. "Re-run failed jobs" re-executes this
+          # step under the SAME run_id, colliding with the earlier attempt's "zap_scan" container —
+          # that's what actually produced the 400 "artifact name is not valid". Make the name unique
+          # per attempt so a re-run can never collide with itself.
+          artifact_name: zap_scan-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Tear down
+        if: always()                         # run even if a previous step failed
+        run: docker compose down -v
+
+  # ── 7. PR SUMMARY comment ─────────────────────────────────────────────────
+  pr-comment:
+    runs-on: ubuntu-latest
+    needs: [ secrets, sast, iac, image-scan ]
+    # always() so the summary posts even when a security job FAILED — otherwise a red run
+    # skips the comment (needs: defaults to requiring success) and you lose the summary
+    # exactly when you most want it. Still only on PRs (there's a PR to comment on).
+    if: always() && github.event_name == 'pull_request'
+    permissions:
+      pull-requests: write                   # let GITHUB_TOKEN post a comment
+    steps:
+      - name: Post pipeline summary
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = `## 🛡️ CodeSheriff pipeline complete
+            | Stage | Result |
+            |-------|--------|
+            | Secrets | ${{ needs.secrets.result }} |
+            | SAST | ${{ needs.sast.result }} |
+            | IaC | ${{ needs.iac.result }} |
+            | Image CVEs | ${{ needs.image-scan.result }} |
+            `;
+            github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: context.issue.number, body
+            });

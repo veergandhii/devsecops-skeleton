@@ -1,10 +1,12 @@
 import json
+import logging
 import asyncio
 import aio_pika
 
 from app.config import RABBITMQ_URL, RESULTS_EXCHANGE, CONSUME_QUEUE, PUBLISH_QUEUE
 from app.ai_client import enrich
 from app.publisher import publish_enriched
+from app.logging_config import correlation_id_var
 
 
 async def start_consumer():
@@ -31,10 +33,13 @@ async def start_consumer():
 
     async def on_message(message: aio_pika.IncomingMessage):
         async with message.process():
+            cid = (message.headers or {}).get("correlation_id", "-")
+            correlation_id_var.set(cid)     # tags every log line in this task with the trace
+
             envelope = json.loads(message.body.decode())
             job_id   = envelope.get("job_id", "unknown")
             findings = envelope.get("findings", [])
-            print(f"🤖 enriching {len(findings)} finding(s) for job {job_id}")
+            logging.info(f"🤖 enriching {len(findings)} finding(s) for job {job_id}")
 
             # Dedup to protect the free-tier quota: identical findings (same rule_id) get the
             # SAME enrichment, so we call Gemini ONCE per unique rule_id and reuse the result.
@@ -46,8 +51,8 @@ async def start_consumer():
                 if key not in cache:
                     cache[key] = await enrich(finding)   # one API call per unique rule_id
                 enriched.append({**finding, "ai": cache[key]})   # reuse, keep original fields
-            print(f"   ↳ {len(findings)} finding(s) → {len(cache)} unique rule_id(s) = "
-                  f"{len(cache)} Gemini call(s)")
+            logging.info(f"   ↳ {len(findings)} finding(s) → {len(cache)} unique rule_id(s) = "
+                         f"{len(cache)} Gemini call(s)")
 
             # Re-publish the SAME envelope shape, now with AI-augmented findings.
             await publish_enriched(publish_channel, {
@@ -55,8 +60,8 @@ async def start_consumer():
                 "service":  "ai-service",
                 "findings": enriched,
             })
-            print(f"✅ job {job_id}: enriched and published")
+            logging.info(f"✅ job {job_id}: enriched and published")
 
     await queue.consume(on_message)
-    print(f"👂 ai-service listening on [{CONSUME_QUEUE}]")
+    logging.info(f"👂 ai-service listening on [{CONSUME_QUEUE}]")
     await asyncio.Future()
