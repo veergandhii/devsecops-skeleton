@@ -1,7 +1,10 @@
 import json
+import logging
 import aio_pika
 import os
 import asyncio
+
+from app.logging_config import correlation_id_var
 
 async def start_consumer():
     rabbitmq_url = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq/")
@@ -24,10 +27,13 @@ async def start_consumer():
 
     async def on_message(message: aio_pika.IncomingMessage):
         async with message.process():
+            cid = (message.headers or {}).get("correlation_id", "-")
+            correlation_id_var.set(cid)     # tags every log line in this task with the trace
+
             payload = json.loads(message.body.decode())
-            print("Received job:", payload)
+            logging.info(f"Received job: {payload}")
 
     await queue.consume(on_message)  # callback-based, doesn't block the loop
-    print("👂 Consumer is now listening for messages...")
+    logging.info("👂 Consumer is now listening for messages...")
 
     await asyncio.Future()  # keeps the coroutine alive without blocking

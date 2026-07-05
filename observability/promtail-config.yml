@@ -1,0 +1,28 @@
+server:
+  http_listen_port: 9080
+
+positions:
+  filename: /tmp/positions.yaml      # remembers how far it has read (survives restarts)
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push   # where Promtail sends logs
+
+scrape_configs:
+  - job_name: docker
+    docker_sd_configs:               # service discovery: ask the Docker daemon for containers
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      # turn the container name into a Loki label you can filter on
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: 'container'
+    pipeline_stages:
+      - json:                        # parse our JSON log lines...
+          expressions:
+            level: level
+            service: service
+            correlation_id: correlation_id
+      - labels:                      # ...and promote these to Loki labels for fast filtering
+          service:
+          level:
