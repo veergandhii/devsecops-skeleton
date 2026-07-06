@@ -107,6 +107,7 @@ jobs:
           severity: CRITICAL
           exit-code: "1"                    # 1 = fail the job if any CRITICAL CVE is found
           ignore-unfixed: true              # don't block on CVEs with no available fix
+          trivyignores: .trivyignore        # justified, scoped suppressions only — see the file
 
   # ── 6. DEPLOY + DAST (only if everything above passed) ────────────────────
   deploy-dast:

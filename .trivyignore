@@ -1,0 +1,15 @@
+# Trivy ignore file — justified, scoped CVE suppressions ONLY. Every entry below must have a
+# reason and a "why it's safe" note (same discipline as .checkov.yaml's skip-list). Referenced by
+# the image-scan job in .github/workflows/security-pipeline.yml via `trivyignores: .trivyignore`.
+# Revisit each entry periodically — an ignore is a risk acceptance, not a permanent exemption.
+
+# CVE-2025-68121 — crypto/tls: incorrect certificate validation during TLS session resumption.
+# Found in: secrets-scanner's `gitleaks` binary (v8.30.1 — the latest release as of this writing;
+# no newer build exists yet that was compiled with a patched Go toolchain — checked upstream
+# releases, nothing newer). The vulnerable code is Go's stdlib crypto/tls, embedded in the
+# statically-compiled gitleaks binary because Go binaries bundle their whole stdlib.
+# Why it's safe here: we invoke `gitleaks detect --no-git --source <dir>` only — pure local
+# filesystem scanning, no network/TLS calls of any kind. The vulnerable session-resumption code
+# path is never reached by how this pipeline uses the tool.
+# Revisit: when gitleaks ships a release built against Go >=1.24.13/1.25.7/1.26.0-rc.3.
+CVE-2025-68121

@@ -12,7 +12,7 @@ venv/
 **/.env
 .env
 
-# Secrets / local docs
+# local docs
 prompts.md
 prompts.pdf
 test_pickle.py

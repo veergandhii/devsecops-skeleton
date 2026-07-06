@@ -6,6 +6,12 @@ FROM ghcr.io/zaproxy/zaproxy:stable
 USER root
 WORKDIR /app
 
+# Patch the base image's kernel-header package (Trivy CVE-2026-53215, linux-libc-dev).
+# --only-upgrade: touch nothing else already installed; headers only, nothing loaded at
+# runtime, but a real fix exists upstream so we take it rather than just suppressing it.
+RUN apt-get update && apt-get install -y --only-upgrade linux-libc-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 # The ZAP image's python is externally managed (PEP 668); --break-system-packages
 # lets us add our few libs into it.
 COPY requirements.txt .
