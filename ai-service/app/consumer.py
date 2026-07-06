@@ -3,7 +3,7 @@ import logging
 import asyncio
 import aio_pika
 
-from app.config import RABBITMQ_URL, RESULTS_EXCHANGE, CONSUME_QUEUE, PUBLISH_QUEUE
+from app.config import RABBITMQ_URL, RESULTS_EXCHANGE, CONSUME_QUEUE
 from app.ai_client import enrich
 from app.publisher import publish_enriched
 from app.logging_config import correlation_id_var
@@ -29,7 +29,6 @@ async def start_consumer():
         RESULTS_EXCHANGE, aio_pika.ExchangeType.FANOUT, durable=True)
     queue = await consume_channel.declare_queue(CONSUME_QUEUE, durable=True)
     await queue.bind(exchange)
-    await publish_channel.declare_queue(PUBLISH_QUEUE, durable=True)
 
     async def on_message(message: aio_pika.IncomingMessage):
         async with message.process():

@@ -1,10 +1,11 @@
 name: CodeSheriff Security Pipeline
 
-# Run on pushes to any branch and on PRs targeting main.
+# Run on pushes to any branch, on PRs targeting main, and on-demand from the Actions tab.
 on:
   push:
   pull_request:
     branches: [ main ]
+  workflow_dispatch:   # "Run workflow" button — trigger the whole pipeline without a push/PR
 
 # Cancel a previous in-progress run on the same ref when a new commit lands — saves minutes.
 concurrency:
@@ -81,17 +82,28 @@ jobs:
       - name: Build all images
         run: docker compose build           # builds every service per docker-compose.yml
 
-  # ── 5. IMAGE CVE scan (Trivy) — fail on CRITICAL ──────────────────────────
+  # ── 5. IMAGE CVE scan (Trivy) — fail on CRITICAL, one matrix leg per service image ──
+  #   Each matrix leg runs on its own fresh runner (job artifacts from `build` don't carry over),
+  #   so every leg rebuilds just its own image before scanning it — same shape as the old
+  #   single-image job, just fanned out across every locally-built Dockerfile in the compose file.
+  #   Pull-only images (traefik, loki, promtail, grafana) have no local Dockerfile, so they're
+  #   excluded — there's nothing of ours to scan; CVEs in upstream images are that image's problem.
   image-scan:
     runs-on: ubuntu-latest
-    needs: build                            # only after images exist
+    needs: build                            # only after `build` confirms everything compiles
+    strategy:
+      fail-fast: false                      # one bad image shouldn't hide the others' results
+      matrix:
+        service: [webhook-receiver, scan-orchestrator, sast-scanner, secrets-scanner,
+                   infra-scanner, dast-scanner, scheduler, ai-service, github-service,
+                   gateway-auth, results-aggregator]
     steps:
       - uses: actions/checkout@v4
-      - run: docker compose build sast-scanner   # rebuild one image to scan (runner is fresh)
+      - run: docker compose build ${{ matrix.service }}   # rebuild just this image (runner is fresh)
       - name: Trivy (CRITICAL blocks merge)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: devsecops-skeleton-sast-scanner   # match your image name (docker images)
+          image-ref: devsecops-skeleton-${{ matrix.service }}   # matches `docker images` naming
           severity: CRITICAL
           exit-code: "1"                    # 1 = fail the job if any CRITICAL CVE is found
           ignore-unfixed: true              # don't block on CVEs with no available fix
@@ -111,7 +123,8 @@ jobs:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
         run: |
           for d in webhook-receiver scan-orchestrator sast-scanner secrets-scanner \
-                   infra-scanner dast-scanner scheduler ai-service github-service gateway-auth; do
+                   infra-scanner dast-scanner scheduler ai-service github-service gateway-auth \
+                   results-aggregator; do
             echo "RABBITMQ_URL=amqp://guest:guest@rabbitmq/" > "$d/.env"
           done
           echo "JWT_SECRET=${JWT_SECRET}" >> gateway-auth/.env

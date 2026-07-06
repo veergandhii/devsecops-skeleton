@@ -1,7 +1,10 @@
 import os
 
 RABBITMQ_URL  = os.getenv("RABBITMQ_URL", "amqp://guest:guest@rabbitmq/")
-CONSUME_QUEUE = os.getenv("CONSUME_QUEUE", "ai-results")   # 1st consumer → plain queue is fine
+# ai-results fan-out (Phase 12): github-service binds its OWN queue to the shared exchange
+# so it and results-aggregator each get a copy of every envelope.
+AI_RESULTS_EXCHANGE = os.getenv("AI_RESULTS_EXCHANGE", "ai_results_fanout")
+CONSUME_QUEUE = os.getenv("CONSUME_QUEUE", "ai-results.github")
 PORT          = os.getenv("PORT", "8006")
 SERVICE_NAME  = "github-service"
 

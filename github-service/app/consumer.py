@@ -3,7 +3,7 @@ import logging
 import asyncio
 import aio_pika
 
-from app.config import RABBITMQ_URL, CONSUME_QUEUE
+from app.config import RABBITMQ_URL, AI_RESULTS_EXCHANGE, CONSUME_QUEUE
 from app.github_client import post_comment
 from app.logging_config import correlation_id_var
 
@@ -19,7 +19,11 @@ async def start_consumer():
 
     channel = await connection.channel()
     await channel.set_qos(prefetch_count=1)
+    # Bind OUR queue to the ai-results fanout exchange — results-aggregator gets its own copy.
+    exchange = await channel.declare_exchange(
+        AI_RESULTS_EXCHANGE, aio_pika.ExchangeType.FANOUT, durable=True)
     queue = await channel.declare_queue(CONSUME_QUEUE, durable=True)
+    await queue.bind(exchange)
 
     async def on_message(message: aio_pika.IncomingMessage):
         async with message.process():

@@ -1,0 +1,31 @@
+# Normalise line endings across the team, regardless of OS.
+# Without this, a Windows checkout can commit CRLF, and tools that run inside the
+# Linux containers (Bandit's tokeniser, shell scripts, Docker) choke on \r.
+# See guides/README.md "House Rule #2" — CRLF once caused Bandit to scan 0 bytes.
+
+# Default: let git decide what's text, but always store/checkout text as LF.
+* text=auto eol=lf
+
+# Be explicit for the file types this repo actually ships.
+*.py         text eol=lf
+*.yml        text eol=lf
+*.yaml       text eol=lf
+*.sh         text eol=lf
+*.md         text eol=lf
+*.html       text eol=lf
+*.css        text eol=lf
+*.json       text eol=lf
+*.env        text eol=lf
+*.example    text eol=lf
+Dockerfile   text eol=lf
+.dockerignore text eol=lf
+.gitignore   text eol=lf
+
+# Binary files — never touch these (no EOL conversion, no diff mangling).
+*.pdf        binary
+*.png        binary
+*.jpg        binary
+*.jpeg       binary
+*.gif        binary
+*.ico        binary
+*.db         binary

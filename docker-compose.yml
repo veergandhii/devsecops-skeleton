@@ -163,7 +163,8 @@ services:
       - --log.level=INFO
     ports:
       - "80:80"        # the ONLY app port exposed to the host now
-      - "8080:8080"    # Traefik dashboard (dev convenience)
+      - "8081:8080"    # Traefik dashboard (dev convenience) — moved off 8080, which
+                       # results-aggregator's real dashboard now owns (Phase 12)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro  # read-only: Traefik only reads metadata
     depends_on:
@@ -203,3 +204,18 @@ services:
       - ./observability/grafana-datasource.yml:/etc/grafana/provisioning/datasources/loki.yml:ro
     depends_on:
       - loki
+  results-aggregator:
+    build: ./results-aggregator
+    env_file: ./results-aggregator/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8080:8080"
+    volumes:
+      - aggregator-data:/data        # named volume → SQLite file survives restarts
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+volumes:
+  aggregator-data:                   # declare the named volume at the file's top level

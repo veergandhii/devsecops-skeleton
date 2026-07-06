@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Overview</h1>
+
+<div class="kpi-row">
+  <div class="kpi"><div class="value">{{ runs|length }}</div><div class="label">Runs</div></div>
+  <div class="kpi"><div class="value">{{ counts.values()|sum }}</div><div class="label">Total findings</div></div>
+  <div class="kpi"><div class="value">{{ counts.get('CRITICAL', 0) }}</div><div class="label">Critical</div></div>
+</div>
+
+<h2>Findings by severity</h2>
+<canvas id="sev" height="140"></canvas>
+
+<h2>Recent runs</h2>
+<table>
+  <tr><th>Job</th><th>Service</th><th>Findings</th><th>When</th></tr>
+  {% for r in runs %}
+  <tr><td>{{ r.job_id }}</td><td>{{ r.service }}</td><td>{{ r.total }}</td><td>{{ r.timestamp }}</td></tr>
+  {% endfor %}
+</table>
+
+<script>
+  // Fixed status vocabulary, not a generated/rainbow palette — same mapping as style.css pills.
+  const STATUS = { CRITICAL: '#d03b3b', HIGH: '#ec835a', MEDIUM: '#fab219', LOW: '#0ca30c', INFO: '#898781' };
+  fetch('/api/severity').then(r => r.json()).then(d => {
+    const order = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO'].filter(k => k in d);
+    new Chart(document.getElementById('sev'), {
+      type: 'bar',
+      data: { labels: order, datasets: [{ data: order.map(k => d[k]), backgroundColor: order.map(k => STATUS[k]) }] },
+      options: {
+        indexAxis: 'y',                                  // horizontal bars — one axis, easy length comparison
+        plugins: { legend: { display: false } },          // axis labels already name each bar; no legend needed
+        scales: { x: { beginAtZero: true }, y: { grid: { display: false } } },
+      },
+    });
+  });
+</script>
+{% endblock %}

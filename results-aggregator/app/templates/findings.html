@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Findings</h1>
+<form method="get">
+  <select name="severity">
+    <option value="">all severities</option>
+    {% for s in ["CRITICAL","HIGH","MEDIUM","LOW","INFO"] %}
+    <option value="{{ s }}" {% if severity==s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+  </select>
+  <input name="tool" placeholder="tool" value="{{ tool or '' }}">
+  <button>Filter</button>
+</form>
+<table>
+  <tr><th>Sev</th><th>Tool</th><th>Rule</th><th>Type</th><th>Location</th><th>Description</th></tr>
+  {% for f in findings %}
+  <tr>
+    <td><span class="pill pill-{{ f.severity }}">{{ f.severity }}</span></td>
+    <td>{{ f.tool }}</td><td>{{ f.rule_id }}</td>
+    <td>{{ f.finding_type }}</td><td>{{ f.location }}</td><td>{{ f.description }}</td>
+  </tr>{% endfor %}
+</table>
+{% endblock %}

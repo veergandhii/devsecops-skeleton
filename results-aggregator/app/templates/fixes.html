@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>AI Fixes</h1>
+{% for location, findings in grouped.items() %}
+<div class="fix-group">
+  <h3>{{ location }}</h3>
+  {% for f in findings %}
+  <div class="fix-item">
+    <span class="pill pill-{{ f.severity }}">{{ f.severity }}</span>
+    <strong>{{ f.rule_id }}</strong> — {{ f.description }}
+    <p class="remediation">{{ f.ai.remediation }}</p>
+  </div>
+  {% endfor %}
+</div>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,52 @@
+:root {
+  --page: #f9f9f7; --surface: #fcfcfb;
+  --text-primary: #0b0b0b; --text-secondary: #52514e; --muted: #898781;
+  --border: rgba(11,11,11,0.10); --gridline: #e1e0d9;
+  --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #0d0d0d; --surface: #1a1a19;
+    --text-primary: #ffffff; --text-secondary: #c3c2b7;
+    --border: rgba(255,255,255,0.10); --gridline: #2c2c2a;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--page); color: var(--text-primary); }
+.shell { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+.sidebar { border-right: 1px solid var(--border); padding: 1.5rem 1rem; }
+.brand { font-weight: 600; letter-spacing: -0.01em; margin-bottom: 1.5rem; }
+.sidebar nav { display: flex; flex-direction: column; gap: .25rem; }
+.sidebar nav a { color: var(--text-secondary); text-decoration: none; padding: .5rem .75rem; border-radius: 6px; font-size: .9rem; }
+.sidebar nav a:hover { background: var(--border); color: var(--text-primary); }
+main { padding: 2rem; max-width: 1000px; }
+h1 { font-size: 1.25rem; font-weight: 600; margin: 0 0 1.25rem; }
+
+.kpi-row { display: flex; gap: 1rem; margin-bottom: 1.5rem; }
+.kpi { flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; }
+.kpi .value { font-size: 1.75rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.kpi .label { font-size: .8rem; color: var(--text-secondary); margin-top: .25rem; }
+
+table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+th { text-align: left; font-weight: 500; color: var(--text-secondary); border-bottom: 1px solid var(--gridline); padding: .6rem .5rem; }
+td { padding: .6rem .5rem; border-bottom: 1px solid var(--gridline); font-variant-numeric: tabular-nums; }
+
+/* Status pill: a dot + label, so severity is never color-alone (accessibility, not decoration). */
+.pill { display: inline-flex; align-items: center; gap: .4rem; font-size: .85rem; }
+.pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.pill-CRITICAL { color: var(--critical); } .pill-HIGH { color: var(--serious); }
+.pill-MEDIUM   { color: var(--warning); }  .pill-LOW  { color: var(--good); }
+.pill-INFO     { color: var(--muted); }
+
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: .5rem; }
+.dot-up { background: var(--good); } .dot-down { background: var(--critical); }
+
+.fix-group { margin-bottom: 1.5rem; }
+.fix-group h3 { font-size: .9rem; font-weight: 600; color: var(--text-secondary); margin-bottom: .5rem; }
+.fix-item { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: .5rem; font-size: .9rem; }
+.remediation { margin: .5rem 0 0; color: var(--text-secondary); font-size: .85rem; }
+
+.service-list { display: flex; flex-direction: column; gap: .5rem; }
+.service-row { display: flex; align-items: center; gap: .5rem; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: .75rem 1rem; font-size: .9rem; }
+.service-name { flex: 1; }
+.service-status { color: var(--text-secondary); font-size: .8rem; text-transform: uppercase; }
